@@ -169,3 +169,201 @@ describe('Scope', () => {
 		expect(scope.counter).toBe(1);
 	});
 });
+
+describe('$eval', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('execs $eval func and returns results', () => {
+		scope.a = 42;
+
+		let result = scope.$eval((scope) => {
+			return scope.a;
+		});
+
+		expect(result).toBe(42);
+	});
+
+	it('passes the 2nd $eval arg straight through', () => {
+		scope.a = 42;
+
+		let result = scope.$eval((scope, arg) => {
+			return scope.a + arg;
+		}, 2);
+
+		expect(result).toBe(44);
+	});
+});
+
+describe('$apply', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('exec the given fn and starts the digest', () => {
+		scope.a = 'a';
+		scope.counter = 0;
+
+		scope.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.counter++;
+		});
+
+		scope.$digest();
+		expect(scope.counter).toBe(1);
+
+		scope.$apply((scope) => {
+			scope.a = 'b';
+		});
+		expect(scope.counter).toBe(2);
+	});
+});
+
+describe('$evalAsync', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('exec the given fn later in the same cycle', () => {
+		scope.a = [1,2,3];
+		scope.asyncEvaluated = false;
+		scope.asyncEvaluatedImmediately = false;
+
+		scope.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.$evalAsync((scope) => {
+				scope.asyncEvaluated = true;
+			});
+			scope.asyncEvaluatedImmediately = scope.asyncEvaluated;
+		});
+
+		scope.$digest();
+		expect(scope.asyncEvaluatedImmediately).toBe(false);
+		expect(scope.asyncEvaluated).toBe(true);
+	});
+
+	it('schedules a digest in $evalAsync', (done) => {
+		scope.a = 'abc';
+		scope.counter = 0;
+		scope.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.counter++;
+		});
+
+		scope.$evalAsync((scope) => {});
+		expect(scope.counter).toBe(0);
+		setTimeout(() => {
+			expect(scope.counter).toBe(1);
+			done();
+		}, 50);
+	});
+});
+
+describe('$digest', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('has a $$phase field whose value is the current digest phse', () => {
+		scope.a = [1,2,3];
+		scope.phaseInWatchFn = undefined;
+		scope.phaseInListenerFn = undefined;
+		scope.phaseInApplyFn = undefined;
+
+		scope.$watch((scope) => {
+			scope.phaseInWatchFn = scope.$$phase;
+			return scope.a;
+		}, (newVal, oldVal, scope) => {
+			scope.phaseInListenerFn = scope.$$phase;
+		});
+
+		scope.$apply((scope) => {
+			scope.phaseInApplyFn = scope.$$phase;
+		});
+
+		expect(scope.phaseInWatchFn).toBe('$digest');
+		expect(scope.phaseInListenerFn).toBe('$digest');
+		expect(scope.phaseInApplyFn).toBe('$apply');
+	});
+});
+
+
+describe('$applyAsync', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('allows async $apply with $applyAsync', (done) => {
+		scope.counter = 0;
+
+		scope.$watch((scope) => scope.a, (newVal, oldVal, scope) => scope.counter++);
+		scope.$digest();
+		expect(scope.counter).toBe(1);
+
+		scope.$applyAsync((scope) => {
+			scope.a = 1;
+		});
+
+		expect(scope.counter).toBe(1);
+
+		setTimeout(() => {
+			expect(scope.counter).toBe(2);
+			done();
+		}, 50);
+	});
+
+});
+
+describe('$$postDigest', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('allow the code run in $$postDigest', () => {
+		scope.counter = 0;
+
+		scope.$$postDigest((scope) => {scope.counter++;});
+		scope.$watch((scope) => scope.a, (newVal, oldVal, scope) => {scope.counter++;});
+		
+		scope.$digest();
+		expect(scope.counter).toBe(2);
+	});
+
+});
+
+describe('$watchGroup', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('takes watches as an array and calls listener with arrays', () => {
+		let gotNewVal, gotOldVal;
+
+		scope.a = 1;
+		scope.b = 2;
+
+		scope.$watchGroup([
+			(scope) => scope.a,
+			(scope) => scope.b
+		], (newVal, oldVal, scope) => {
+			gotNewVal = newVal;
+			gotOldVal = oldVal;
+		});
+		scope.$digest();
+
+		expect(gotNewVal).toEqual([1,2]);
+		expect(gotOldVal).toEqual([1,2]);
+	});
+});
