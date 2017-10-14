@@ -367,3 +367,99 @@ describe('$watchGroup', () => {
 		expect(gotOldVal).toEqual([1,2]);
 	});
 });
+
+describe('childScope', () => {
+	let scope;
+
+	beforeEach(() => {
+		scope = new Scope();
+	});
+
+	it('shadows a parents property with the same name', () => {
+		const parent = new Scope();
+		const child = parent.$new();
+
+		parent.name = 'Joe';
+		child.name = 'Jill';
+
+		expect(child.name).toBe('Jill');
+		expect(parent.name).toBe('Joe');
+	});
+
+	it('does not shadow members of parent scopes attributes', () => {
+		const parent = new Scope();
+		
+
+		parent.user = {name: 'Joe'};
+		const child = parent.$new();
+		child.user.name = 'Jill';
+
+		expect(child.user.name).toBe('Jill');
+		expect(parent.user.name).toBe('Jill');
+	});
+
+	it('does not digest its parents', () => {
+		const parent = new Scope();
+		const child = parent.$new();
+
+		parent.a = 'abc';
+		parent.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.aWas = newVal;
+		});
+
+		child.$digest();
+		expect(child.aWas).toBeUndefined();
+	});
+
+	it('digest its children', () => {
+		const parent = new Scope();
+		const child = parent.$new();
+
+		parent.a = 'abc';
+		child.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.aWas = newVal;
+		});
+
+		parent.$digest();
+		expect(child.aWas).toBe('abc');
+	});
+
+	it('does not have access to parent attributes when isolated', () => {
+		const parent = new Scope();
+		const child = parent.$new(true);
+
+		parent.a = 'a';
+
+		expect(child.a).toBeUndefined();
+	});
+
+	it('digest its isolated children', () => {
+		const parent = new Scope();
+		const child = parent.$new(true);
+
+		child.a = 'abc';
+		child.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.aWas = newVal;
+		});
+
+		parent.$digest();
+		expect(child.aWas).toBe('abc');
+	});
+
+	it('digests from root on $appy when isolated', () => {
+		const parent = new Scope();
+		const child = parent.$new(true);
+		const child2 = child.$new();
+
+		parent.a = 'abc';
+		parent.counter = 0;
+		parent.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
+			scope.counter++
+		});
+
+		child2.$apply(() => {});
+		expect(parent.counter).toBe(1);
+	});
+});
+
+

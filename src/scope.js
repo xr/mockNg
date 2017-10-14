@@ -2,7 +2,7 @@ const _ = require('lodash');
 
 const initWatchVal = () => {};
 
-export default class Scope {
+class Scope {
 	constructor() {
 		this.$$watchers = [];
 		this.$$lastDirtyWatch = null;
@@ -11,6 +11,40 @@ export default class Scope {
 		this.$$applyAsyncId = null;
 		this.$$postDigestQueue = [];
 		this.$$phase = null;
+		this.$$children = [];
+		this.$root = this;
+	}
+
+	$new(isolated, parent) {
+		let child;
+		parent = parent || this;
+		if (isolated) {
+			child = new Scope();
+			child.$root = parent.$root;
+			child.$$asyncQueue = parent.$$asyncQueue;
+			child.$$postDigestQueue = parent.$$postDigestQueue;
+			child.$$applyAsyncQueue = parent.$$applyAsyncQueue;
+		} else {
+			child = Object.create(this);
+
+			child.$$watchers = [];
+			child.$$children = [];
+		}
+		parent.$$children.push(child);
+		child.$parent = parent;
+		
+		return child;
+	}
+
+	$destroy() {
+		if (this.$parent) {
+			let siblings = this.$parent.$children;
+			let indexOfThis = siblings.indexOf(this);
+			if (indexOfThis >= 0) {
+				siblings.splice(indexOfThis, 1);
+			}
+		}
+		this.$$watchers = null;
 	}
 
 	$begisnPhase(phase) {
@@ -33,24 +67,24 @@ export default class Scope {
 		};
 
 		this.$$watchers.push(watcher);
-		this.$$lastDirtyWatch = null;
+		this.$root.$$lastDirtyWatch = null;
 
 		return () => {
 			let index = this.$$watchers.indexOf(watcher);
 			if (index >= 0) {
 				this.$$watchers.splice(index, 1);
-				this.$$lastDirtyWatch = null;
+				this.$root.$$lastDirtyWatch = null;
 			}
-		}
+		};
 	}
 
 	$digest() {
 		let dirty, ttl = 10;
-		this.$$lastDirtyWatch = null;
+		this.$root.$$lastDirtyWatch = null;
 		this.$begisnPhase('$digest');
 
-		if (this.$$applyAsyncId) {
-			clearTimeout(this.$$applyAsyncId);
+		if (this.$root.$$applyAsyncId) {
+			clearTimeout(this.$root.$$applyAsyncId);
 			this.$$flushApplyAsync();
 		}
 
@@ -80,28 +114,51 @@ export default class Scope {
 		}
 	}
 
-	$$digestOnce() {
-		let newVal, oldVal, dirty;
-		this.$$watchers.some((watcher) => {
-			try {
-				if (watcher) {
-					newVal = watcher.watchFn(this);
-					oldVal = watcher.last;
+	$$everyScope(fn) {
+		if (fn.call(this)) {
+			return this.$$children.every((child) => {
+				return child.$$everyScope(fn);
+			});
+		} else {
+			return false;
+		}
+	}
 
-					if (!this.$$areEqual(newVal, oldVal, watcher.valueEq)) {
-						oldVal = (oldVal === initWatchVal) ? newVal : oldVal;
-						watcher.listenerFn(newVal, oldVal, this);
-						watcher.last = newVal;
-						this.$$lastDirtyWatch = watcher;
-						dirty = true;
-					} else if (watcher === this.$$lastDirtyWatch) {
-						return true;
+	$$digestOnce() {
+		let newVal,
+			oldVal,
+			dirty,
+			self = this,
+			continueLoop = true;
+
+		// use normal function due to the context binding needs.
+		let iterator = function () {
+			this.$$watchers.some((watcher) => {
+				try {
+					if (watcher) {
+						newVal = watcher.watchFn(this);
+						oldVal = watcher.last;
+
+						if (!this.$$areEqual(newVal, oldVal, watcher.valueEq)) {
+							oldVal = (oldVal === initWatchVal) ? newVal : oldVal;
+							watcher.listenerFn(newVal, oldVal, this);
+							watcher.last = newVal;
+							this.$root.$$lastDirtyWatch = watcher;
+							dirty = true;
+						} else if (watcher === this.$root.$$lastDirtyWatch) {
+							continueLoop = false;
+							return true;
+						}
 					}
+				} catch (e) {
+					console.error(e);
 				}
-			} catch (e) {
-				console.error(e);
-			}
-		});
+			});
+			return continueLoop;
+		};
+
+
+		this.$$everyScope(iterator);
 
 		return dirty;
 	}
@@ -125,7 +182,7 @@ export default class Scope {
 			this.$eval(expr);
 		} finally {
 			this.$clearPhase();
-			this.$digest();
+			this.$root.$digest();
 		}
 	}
 
@@ -133,7 +190,7 @@ export default class Scope {
 		if (!this.$$phase && !this.$$asyncQueue.length) {
 			setTimeout(() => {
 				if (this.$$asyncQueue.length) {
-					this.$digest();
+					this.$root.$digest();
 				}
 			}, 0);
 		}
@@ -148,7 +205,7 @@ export default class Scope {
 				console.error(e);
 			}
 		}
-		this.$$applyAsyncId = null;
+		this.$root.$$applyAsyncId = null;
 	}
 
 	$applyAsync(expr) {
@@ -156,8 +213,8 @@ export default class Scope {
 			this.$eval(expr);
 		});
 
-		if (this.$$applyAsyncId === null) {
-			this.$$applyAsyncId = setTimeout(() => {
+		if (this.$root.$$applyAsyncId === null) {
+			this.$root.$$applyAsyncId = setTimeout(() => {
 				this.$apply(this.$$flushApplyAsync.bind(this));
 			}, 0);
 		}
@@ -166,6 +223,7 @@ export default class Scope {
 	$$postDigest(fn) {
 		this.$$postDigestQueue.push(fn);
 	}
+
 
 	$watchGroup(watchFns, listenerFn) {
 		const newVals = new Array(watchFns.length);
@@ -214,3 +272,5 @@ export default class Scope {
 	}
 
 }
+
+export default Scope
