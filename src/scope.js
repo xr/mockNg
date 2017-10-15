@@ -13,6 +13,21 @@ class Scope {
 		this.$$phase = null;
 		this.$$children = [];
 		this.$root = this;
+		this.$$listeners = {};
+	}
+
+	$on(eventName, listener) {
+		let listeners = this.$$listeners[eventName];
+		if (!listeners) {
+			this.$$listeners[eventName] = listeners = [];
+		}
+		listeners.push(listener);
+		return () => {
+			let idx = listeners.indexOf(listener);
+			if (idx >= 0) {
+				listeners[idx] = null;
+			}
+		}
 	}
 
 	$new(isolated, parent) {
@@ -30,13 +45,73 @@ class Scope {
 			child.$$watchers = [];
 			child.$$children = [];
 		}
+		child.$$listeners = {};
 		parent.$$children.push(child);
 		child.$parent = parent;
 		
 		return child;
 	}
 
+	$emit(eventName, ...args) {
+		let propagationStopped = false;
+		let event = {
+			name: eventName,
+			targetScope: this,
+			stopPropagation: function() {
+				propagationStopped = true;
+			},
+			preventDefault: function() {
+				event.defaultPrevented = true;
+			}
+		};
+		let listenerArgs = [event].concat(args);
+		let scope = this;
+		do {
+			event.currentScope = scope;
+			scope.$$fireEventOnScope(eventName, listenerArgs);
+			scope = scope.$parent;
+		} while (scope && !propagationStopped);
+		event.currentScope = null;
+		return event;
+	}
+
+	$broadcast(eventName, ...args) {
+		let event = {
+			name: eventName,
+			targetScope: this,
+			preventDefault: function() {
+				event.defaultPrevented = true;
+			}
+		};
+		let listenerArgs = [event].concat(args);
+		this.$$everyScope(function () {
+			event.currentScope = this;
+			this.$$fireEventOnScope(eventName, listenerArgs);
+			return true;
+		});
+		event.currentScope = null;
+		return event;
+	}
+
+	$$fireEventOnScope(eventName, ...args) {
+		let listeners = this.$$listeners[eventName] || [];
+		let i = 0;
+		while (i < listeners.length) {
+			if (listeners[i] === null) {
+				listeners.splice(i, 1);
+			} else {
+				try {
+					listeners[i].apply(null, ...args);
+				} catch (e) {
+					console.error(e);
+				}
+				i++;
+			}
+		}
+	}
+
 	$destroy() {
+		this.$broadcast('$destroy');
 		if (this.$parent) {
 			let siblings = this.$parent.$children;
 			let indexOfThis = siblings.indexOf(this);
@@ -45,6 +120,7 @@ class Scope {
 			}
 		}
 		this.$$watchers = null;
+		this.$$listeners = {};
 	}
 
 	$begisnPhase(phase) {
@@ -273,4 +349,4 @@ class Scope {
 
 }
 
-export default Scope
+export default Scope;

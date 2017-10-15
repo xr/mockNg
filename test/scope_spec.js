@@ -454,7 +454,7 @@ describe('childScope', () => {
 		parent.a = 'abc';
 		parent.counter = 0;
 		parent.$watch((scope) => scope.a, (newVal, oldVal, scope) => {
-			scope.counter++
+			scope.counter++;
 		});
 
 		child2.$apply(() => {});
@@ -462,4 +462,66 @@ describe('childScope', () => {
 	});
 });
 
+describe('events', () => {
+	let parent;
+	let scope;
+	let child;
+	let isolatedChild;
 
+	beforeEach(() => {
+		parent = new Scope();
+		scope = parent.$new();
+		child = scope.$new();
+		isolatedChild = scope.$new(true);
+	});
+
+	it('calls listeners on $emit', () => {
+		let listener1 = jasmine.createSpy();
+		let listener2 = jasmine.createSpy();
+		scope.$on('someEvent', listener1);
+		scope.$on('someOtherEvent', listener2);
+
+		scope.$emit('someEvent');
+
+		expect(listener1).toHaveBeenCalled();
+		expect(listener2).not.toHaveBeenCalled();
+	});
+
+	it('calls listeners on $broadcast', () => {
+		let listener1 = jasmine.createSpy();
+		let listener2 = jasmine.createSpy();
+		scope.$on('someEvent', listener1);
+		scope.$on('someOtherEvent', listener2);
+
+		scope.$broadcast('someEvent');
+
+		expect(listener1).toHaveBeenCalled();
+		expect(listener2).not.toHaveBeenCalled();
+	});
+
+
+	it('passes additional arguments', () => {
+		let listener = jasmine.createSpy();
+		scope.$on('s', listener);
+
+		scope.$emit('s', 'and', ['whatever'], 'hahah');
+
+		expect(listener.calls.mostRecent().args[1]).toEqual('and');
+		expect(listener.calls.mostRecent().args[2]).toEqual(['whatever']);
+		expect(listener.calls.mostRecent().args[3]).toEqual('hahah');
+	});
+
+	it('propagates the same event down on $broadcast', () => {
+		let scopeListener = jasmine.createSpy();
+		let childListener = jasmine.createSpy();
+
+		scope.$on('someEvent', scopeListener);
+		child.$on('someEvent', childListener);
+
+		scope.$broadcast('someEvent');
+
+		let scopeEvent = scopeListener.calls.mostRecent().args[0];
+		let childEvent = childListener.calls.mostRecent().args[0];
+		expect(scopeEvent).toBe(childEvent);
+	});
+});
