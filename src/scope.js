@@ -27,7 +27,7 @@ class Scope {
 			if (idx >= 0) {
 				listeners[idx] = null;
 			}
-		}
+		};
 	}
 
 	$new(isolated, parent) {
