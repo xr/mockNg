@@ -8,9 +8,21 @@ export function setupModuleLoader (window) {
 			throw 'invalid module name';
 		}
 
+		let invokeQueue = [];
+
 		let moduleInstance = {
 			name: name,
-			requires: requires
+			requires: requires,
+			constant: (key, value) => {
+				if (key === 'hasOwnProperty') {
+					throw 'invalid constant name';
+				}
+				invokeQueue.push([
+					'constant',
+					[key, value]
+				]);
+			},
+			_invokeQueue: invokeQueue
 		};
 
 		modules[name] = moduleInstance;
