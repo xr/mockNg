@@ -48,4 +48,5 @@ describe('modules', () => {
 		expect(gotModule).toBeDefined();
 		expect(gotModule).toBe(myModule);
 	});
+
 });
