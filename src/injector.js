@@ -1,42 +1,37 @@
 'use strict';
 
 export function createInjector(modulesToLoad, strictDi) {
-	const instanceCache = {};
-	const providerCache = {};
+	
 	const loadedModules = {};
 	const FN_ARGS = /^function\s*[^\(]*\(\s*([^\)]*)\)/m;
 	const FN_ARG = /^\s*(\S+)\s*$/;
+	const INSTANTIATING = {};
 	strictDi = (strictDi === true);
+
+	const providerCache = {};
+	const providerInjector = createInternalInjector(providerCache, function() {
+		throw 'Unknown provider';
+	});
+	const instanceCache = {};
+	const instanceInjector = createInternalInjector(instanceCache, function(name) {
+		const provider = providerInjector.get(name + 'Provider');
+		return instanceInjector.invoke(provider.$get, provider);
+	});
+
 
 	const $provide = {
 		constant: (key, value) => {
+			providerCache[key] = value;
 			instanceCache[key] = value;
 		},
 		provider: (key, provider) => {
+			if (typeof provider === 'function') {
+				provider = providerInjector.instantiate(provider);
+			}
 			providerCache[`${key}Provider`] = provider;
 		}
 	};
 
-	function instantiate(Constructor, locals) {
-		var UnwrappedConstructor = Array.isArray(Constructor) ? Constructor[Constructor.length - 1] : Constructor;
-		var instance = Object.create(UnwrappedConstructor.prototype);
-		invoke(Constructor, instance, locals);
-		return instance;
-	}
-
-	function invoke(fn, context, locals) {
-		context = context || null;
-		let injects = annotate(fn);
-		let args = injects.map((key) => {
-			return locals && locals.hasOwnProperty(key) ? locals[key] : getService(key);
-		});
-
-		if (Array.isArray(fn)) {
-			fn = fn[fn.length - 1];
-		}
-		
-		return fn.apply(context, args);
-	}
 
 	function annotate(fn) {
 		if (Array.isArray(fn)) {
@@ -56,6 +51,58 @@ export function createInjector(modulesToLoad, strictDi) {
 		}
 	}
 
+	function createInternalInjector(cache, factoryFn) {
+		function getService(name) {
+		  	if (cache.hasOwnProperty(name)) {
+		  		if (cache[name] === INSTANTIATING) {
+		  			throw new Error('Circular dependency found');
+		  		}
+		  		return cache[name];
+		  	} else {
+				cache[name] = INSTANTIATING;
+				try {
+					return (cache[name] = factoryFn(name));
+				} finally {
+					if (cache[name] === INSTANTIATING) {
+						delete cache[name];
+					} 
+				}
+			}
+		}
+
+		function invoke(fn, context, locals) {
+			context = context || null;
+			let injects = annotate(fn);
+			let args = injects.map((key) => {
+				return locals && locals.hasOwnProperty(key) ? locals[key] : getService(key);
+			});
+
+			if (Array.isArray(fn)) {
+				fn = fn[fn.length - 1];
+			}
+			
+			return fn.apply(context, args);
+		}
+
+		function instantiate(Constructor, locals) {
+			var UnwrappedConstructor = Array.isArray(Constructor) ? Constructor[Constructor.length - 1] : Constructor;
+			var instance = Object.create(UnwrappedConstructor.prototype);
+			invoke(Constructor, instance, locals);
+			return instance;
+		}
+
+		return {
+			has: (key) => {
+				return cache.hasOwnProperty(key) || providerCache.hasOwnProperty(key + 'Provider');
+			},
+			get: getService,
+			invoke: invoke,
+			annotate: annotate,
+			instantiate: instantiate
+		};
+	}
+
+
 	modulesToLoad.forEach(function loadModule(moduleName) {
 		if (!loadedModules.hasOwnProperty(moduleName)) {
 			loadedModules[moduleName] = true;
@@ -70,22 +117,5 @@ export function createInjector(modulesToLoad, strictDi) {
 		}
 	});
 
-	function getService(name) {
-	  if (instanceCache.hasOwnProperty(name)) {
-	    return instanceCache[name];
-	  } else if (providerCache.hasOwnProperty(name + 'Provider')) {
-	    var provider = providerCache[name + 'Provider'];
-	    return invoke(provider.$get, provider);
-	  }
-	}
-
-	return {
-		has: (key) => {
-			return instanceCache.hasOwnProperty(key) || providerCache.hasOwnProperty(key + 'Provider');
-		},
-		get: getService,
-		invoke: invoke,
-		annotate: annotate,
-		instantiate: instantiate
-	};
+	return instanceInjector;
 }
