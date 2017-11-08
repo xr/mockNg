@@ -10,18 +10,18 @@ export function setupModuleLoader (window) {
 
 		let invokeQueue = [];
 
+		let invokeLater = function(method) {
+		  return function() {
+		    invokeQueue.push([method, arguments]);
+		    return moduleInstance;
+		  };
+		};
+
 		let moduleInstance = {
 			name: name,
 			requires: requires,
-			constant: (key, value) => {
-				if (key === 'hasOwnProperty') {
-					throw 'invalid constant name';
-				}
-				invokeQueue.push([
-					'constant',
-					[key, value]
-				]);
-			},
+			constant: invokeLater('constant'),
+			provider: invokeLater('provider'),
 			_invokeQueue: invokeQueue
 		};
 

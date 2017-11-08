@@ -1,7 +1,8 @@
 'use strict';
 
 export function createInjector(modulesToLoad, strictDi) {
-	const cache = {};
+	const instanceCache = {};
+	const providerCache = {};
 	const loadedModules = {};
 	const FN_ARGS = /^function\s*[^\(]*\(\s*([^\)]*)\)/m;
 	const FN_ARG = /^\s*(\S+)\s*$/;
@@ -9,7 +10,10 @@ export function createInjector(modulesToLoad, strictDi) {
 
 	const $provide = {
 		constant: (key, value) => {
-			cache[key] = value;
+			instanceCache[key] = value;
+		},
+		provider: (key, provider) => {
+			providerCache[`${key}Provider`] = provider;
 		}
 	};
 
@@ -24,7 +28,7 @@ export function createInjector(modulesToLoad, strictDi) {
 		context = context || null;
 		let injects = annotate(fn);
 		let args = injects.map((key) => {
-			return locals && locals.hasOwnProperty(key) ? locals[key] : cache[key];
+			return locals && locals.hasOwnProperty(key) ? locals[key] : getService(key);
 		});
 
 		if (Array.isArray(fn)) {
@@ -66,13 +70,20 @@ export function createInjector(modulesToLoad, strictDi) {
 		}
 	});
 
+	function getService(name) {
+	  if (instanceCache.hasOwnProperty(name)) {
+	    return instanceCache[name];
+	  } else if (providerCache.hasOwnProperty(name + 'Provider')) {
+	    var provider = providerCache[name + 'Provider'];
+	    return invoke(provider.$get, provider);
+	  }
+	}
+
 	return {
 		has: (key) => {
-			return cache.hasOwnProperty(key);
+			return instanceCache.hasOwnProperty(key) || providerCache.hasOwnProperty(key + 'Provider');
 		},
-		get: (key) => {
-			return cache[key];
-		},
+		get: getService,
 		invoke: invoke,
 		annotate: annotate,
 		instantiate: instantiate
