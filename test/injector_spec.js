@@ -243,6 +243,16 @@ describe('injector', () => {
 	    injector.get('b');
 	  }).toThrow();
 	});
+
+	it('registers constants  rst to make them available to providers', function() {
+	  var module = window.angular.module('myModule', []);
+	  module.provider('a', function AProvider(b) {
+	    this.$get = function() { return b; };
+	  });
+	  module.constant('b', 42);
+	  var injector = createInjector(['myModule']);
+	  expect(injector.get('a')).toBe(42);
+	});
 });
 
 describe('annotate', function() {
