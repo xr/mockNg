@@ -8,11 +8,14 @@ export function setupModuleLoader (window) {
 			throw 'invalid module name';
 		}
 
+		let configBlocks = [];
 		let invokeQueue = [];
 
-		let invokeLater = function(method, arrayMethod) {
+		let invokeLater = function(service, method, arrayMethod, queue) {
 		  return function() {
-		    invokeQueue[arrayMethod || 'push']([method, arguments]);
+		  	queue = queue || invokeQueue;
+		  	let item = [service, method, arguments];
+		    queue[arrayMethod || 'push'](item);
 		    return moduleInstance;
 		  };
 		};
@@ -20,9 +23,16 @@ export function setupModuleLoader (window) {
 		let moduleInstance = {
 			name: name,
 			requires: requires,
-			constant: invokeLater('constant', 'unshift'),
-			provider: invokeLater('provider'),
-			_invokeQueue: invokeQueue
+			constant: invokeLater('$provide', 'constant', 'unshift'),
+			provider: invokeLater('$provide', 'provider'),
+			config: invokeLater('$injector', 'invoke', 'push', configBlocks),
+			run: function (fn) {
+				moduleInstance._runBlocks.push(fn);
+  				return moduleInstance;
+			},
+			_invokeQueue: invokeQueue,
+			_configBlocks: configBlocks,
+			_runBlocks: []
 		};
 
 		modules[name] = moduleInstance;

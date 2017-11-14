@@ -253,6 +253,73 @@ describe('injector', () => {
 	  var injector = createInjector(['myModule']);
 	  expect(injector.get('a')).toBe(42);
 	});
+
+	it('allows injecting the instance injector to $get', function() {
+	  var module = window.angular.module('myModule', []);
+	  module.constant('a', 42);
+	  module.provider('b', function BProvider() {
+	  	this.$get = function($injector) {
+	  		return $injector.get('a');
+	  	};
+	  });
+	  var injector = createInjector(['myModule']);
+	  expect(injector.get('b')).toBe(42);
+	});
+
+	it('allows injecting the provider injector to provider', function() {
+	  var module = window.angular.module('myModule', []);
+	  module.provider('a', function AProvider() {
+	    this.value = 42;
+	    this.$get = function() { return this.value; };
+	  });
+	  module.provider('b', function BProvider($injector) {
+	    var aProvider = $injector.get('aProvider');
+	    this.$get = function() {
+	      return aProvider.value;
+	    };
+	});
+	  var injector = createInjector(['myModule']);
+	  expect(injector.get('b')).toBe(42);
+	});
+
+	it('allows injecting the $provide service to providers', function() {
+	  var module = window.angular.module('myModule', []);
+	  module.provider('a', function AProvider($provide) {
+	    $provide.constant('b', 2);
+	    this.$get = function(b) { return 1 + b; };
+	});
+	  var injector = createInjector(['myModule']);
+	  expect(injector.get('a')).toBe(3);
+	});
+
+	it('runs con g blocks when the injector is created', function() {
+	  var module = window.angular.module('myModule', []);
+	  var hasRun = false;
+	  module.config(function() {
+	    hasRun = true;
+	  });
+	  createInjector(['myModule']);
+	  expect(hasRun).toBe(true);
+	});
+
+	it('injects con g blocks with provider injector', function() {
+	  var module = window.angular.module('myModule', []);
+	  module.config(function($provide) {
+	    $provide.constant('a', 42);
+	});
+	  var injector = createInjector(['myModule']);
+	  expect(injector.get('a')).toBe(42);
+	});
+
+	it('runs run blocks when the injector is created', function() {
+	  var module = window.angular.module('myModule', []);
+	  var hasRun = false;
+	  module.run(function() {
+	    hasRun = true;
+	  });
+	  createInjector(['myModule']);
+	  expect(hasRun).toBe(true);
+	});
 });
 
 describe('annotate', function() {

@@ -9,17 +9,17 @@ export function createInjector(modulesToLoad, strictDi) {
 	strictDi = (strictDi === true);
 
 	const providerCache = {};
-	const providerInjector = createInternalInjector(providerCache, function() {
+	const providerInjector = providerCache.$injector = createInternalInjector(providerCache, function() {
 		throw 'Unknown provider';
 	});
 	const instanceCache = {};
-	const instanceInjector = createInternalInjector(instanceCache, function(name) {
+	const instanceInjector = instanceCache.$injector = createInternalInjector(instanceCache, function(name) {
 		const provider = providerInjector.get(name + 'Provider');
 		return instanceInjector.invoke(provider.$get, provider);
 	});
 
 
-	const $provide = {
+	const $provide = providerCache.$provide = {
 		constant: (key, value) => {
 			providerCache[key] = value;
 			instanceCache[key] = value;
@@ -102,19 +102,30 @@ export function createInjector(modulesToLoad, strictDi) {
 		};
 	}
 
+	function runInvokeQueue(queue) {
+		queue.forEach((invokeArgs) => {
+			var service = providerInjector.get(invokeArgs[0]);
+			var method = invokeArgs[1];
+			var args = invokeArgs[2];
+			service[method].apply(service, args);
+		});
+	}
 
+
+	let runBlocks = [];
 	modulesToLoad.forEach(function loadModule(moduleName) {
 		if (!loadedModules.hasOwnProperty(moduleName)) {
 			loadedModules[moduleName] = true;
 			const module = window.angular.module(moduleName);
 			module.requires.forEach(loadModule);
-			module._invokeQueue.forEach((invokeArgs) => {
-				const method = invokeArgs[0];
-				const value = invokeArgs[1];
-
-				$provide[method].apply($provide, value);
-			});
+			runInvokeQueue(module._invokeQueue);
+			runInvokeQueue(module._configBlocks);
+			runBlocks = runBlocks.concat(module._runBlocks);
 		}
+	});
+
+	runBlocks.forEach((runBlock) => {
+	  instanceInjector.invoke(runBlock);
 	});
 
 	return instanceInjector;
